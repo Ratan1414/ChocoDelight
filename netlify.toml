@@ -1,7 +1,7 @@
 [build]
-  base = "frontend"
-  publish = "dist"
-  functions = "../netlify/functions"
+  publish = "frontend/dist"
+  functions = "netlify/functions"
+  command = "cd frontend && npm run build"
 
 [build.environment]
   NODE_VERSION = "18"
@@ -10,6 +10,3 @@
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
-
-[functions]
-  directory = "../netlify/functions"
