@@ -1,39 +1,70 @@
-const mongoose = require('mongoose');
+const supabase = require('../config/db');
 
-const couponSchema = new mongoose.Schema({
-  code: {
-    type: String,
-    required: true,
-    unique: true,
-    uppercase: true,
-    trim: true
-  },
-  discount: {
-    type: Number,
-    required: true,
-    min: 1,
-    max: 90
-  },
-  minPurchase: {
-    type: Number,
-    default: 0
-  },
-  maxDiscount: {
-    type: Number,
-    default: null
-  },
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  expiresAt: {
-    type: Date,
-    required: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+class Coupon {
+  static async create(couponData) {
+    const { data, error } = await supabase
+      .from('coupons')
+      .insert([couponData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
-});
 
-module.exports = mongoose.model('Coupon', couponSchema);
+  static async findByCode(code) {
+    const { data, error } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('code', code.toUpperCase())
+      .single();
+
+    if (error) return null;
+    return data;
+  }
+
+  static async findById(id) {
+    const { data, error } = await supabase
+      .from('coupons')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) return null;
+    return data;
+  }
+
+  static async findAll() {
+    const { data, error } = await supabase
+      .from('coupons')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async updateById(id, updateData) {
+    const { data, error } = await supabase
+      .from('coupons')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async deleteById(id) {
+    const { error } = await supabase
+      .from('coupons')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+}
+
+module.exports = Coupon;

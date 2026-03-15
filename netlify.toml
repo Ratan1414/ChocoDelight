@@ -1,6 +1,7 @@
 [build]
-  publish = "frontend/dist"
-  functions = "backend/netlify/functions"
+  base = "frontend"
+  publish = "dist"
+  functions = "../backend/netlify/functions"
 
 [build.environment]
   NODE_VERSION = "18"
@@ -11,4 +12,4 @@
   status = 200
 
 [functions]
-  directory = "backend/netlify/functions"
+  directory = "../backend/netlify/functions"

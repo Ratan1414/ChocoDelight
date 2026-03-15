@@ -33,7 +33,7 @@ exports.createOrder = async (req, res) => {
       }
       subtotal += product.price * item.quantity;
       orderItems.push({
-        product: product._id,
+        product: product.id,
         name: product.name,
         price: product.price,
         quantity: item.quantity,
@@ -48,41 +48,30 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    const shippingPrice = subtotal > 500 ? 0 : 49;
-    const discountAmount = discount || 0;
+    const shippingPrice = subtotal > 500 ? 0 : 50;
     const taxPrice = Math.round(subtotal * 0.18); // 18% GST
-    const totalPrice = subtotal + shippingPrice + taxPrice - discountAmount;
+    const totalPrice = subtotal + shippingPrice + taxPrice - (discount || 0);
 
-    // Generate unique invoice number
-    let invoiceNumber;
-    let isUnique = false;
-    while (!isUnique) {
-      invoiceNumber = generateInvoiceNumber();
-      const existingOrder = await Order.findOne({ invoiceNumber });
-      if (!existingOrder) {
-        isUnique = true;
-      }
-    }
-
-    const order = await Order.create({
-      user: req.user._id,
+    const orderData = {
+      user_id: req.user.id,
       items: orderItems,
-      shippingAddress,
-      paymentMethod: paymentMethod || 'COD',
+      shipping_address: shippingAddress,
+      payment_method: paymentMethod || 'COD',
       subtotal,
-      shippingPrice,
-      discount: discountAmount,
-      taxPrice,
-      totalPrice,
-      couponCode,
-      invoiceNumber
-    });
+      shipping_price: shippingPrice,
+      discount: discount || 0,
+      tax_price: taxPrice,
+      total_price: totalPrice,
+      coupon_code: couponCode,
+      invoice_number: generateInvoiceNumber()
+    };
 
-    // Update stock
+    const order = await Order.create(orderData);
+
+    // Update product stock
     for (const item of items) {
-      await Product.findByIdAndUpdate(item.product, {
-        $inc: { stock: -item.quantity }
-      });
+      const product = await Product.findById(item.product);
+      await Product.updateById(item.product, { stock: product.stock - item.quantity });
     }
 
     res.status(201).json({ success: true, order });
@@ -93,9 +82,7 @@ exports.createOrder = async (req, res) => {
 
 exports.getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.find({ user: req.user._id })
-      .populate('items.product', 'name image price _id')
-      .sort({ createdAt: -1 });
+    const orders = await Order.findByUserId(req.user.id);
     res.status(200).json({ success: true, orders });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -104,11 +91,12 @@ exports.getMyOrders = async (req, res) => {
 
 exports.getOrder = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate('items.product', 'name image price _id');
+    const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
-    if (order.user.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    // Check if order belongs to user or user is admin
+    if (order.user_id !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     res.status(200).json({ success: true, order });
@@ -119,10 +107,7 @@ exports.getOrder = async (req, res) => {
 
 exports.getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.find()
-      .populate('user', 'name email')
-      .populate('items.product', 'name image price')
-      .sort({ createdAt: -1 });
+    const orders = await Order.findAll();
     res.status(200).json({ success: true, orders });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -136,13 +121,39 @@ exports.updateOrderStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    order.status = req.body.status;
+    const updateData = { status: req.body.status };
     if (req.body.status === 'Delivered') {
-      order.deliveredAt = Date.now();
+      updateData.delivered_at = new Date().toISOString();
     }
-    await order.save();
 
-    res.status(200).json({ success: true, order });
+    const updatedOrder = await Order.updateById(req.params.id, updateData);
+    res.status(200).json({ success: true, order: updatedOrder });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.status !== 'Processing') {
+      return res.status(400).json({ success: false, message: 'Order cannot be cancelled' });
+    }
+
+    // Restore stock
+    for (const item of order.items) {
+      const product = await Product.findById(item.product);
+      if (product) {
+        await Product.updateById(item.product, { stock: product.stock + item.quantity });
+      }
+    }
+
+    const updatedOrder = await Order.updateById(req.params.id, { status: 'Cancelled' });
+    res.status(200).json({ success: true, order: updatedOrder });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
