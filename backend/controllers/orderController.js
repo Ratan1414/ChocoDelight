@@ -33,7 +33,7 @@ exports.createOrder = async (req, res) => {
       }
       subtotal += product.price * item.quantity;
       orderItems.push({
-        product: product.id,
+        product: product._id,
         name: product.name,
         price: product.price,
         quantity: item.quantity,
@@ -53,17 +53,17 @@ exports.createOrder = async (req, res) => {
     const totalPrice = subtotal + shippingPrice + taxPrice - (discount || 0);
 
     const orderData = {
-      user_id: req.user.id,
+      user: req.user.id,
       items: orderItems,
-      shipping_address: shippingAddress,
-      payment_method: paymentMethod || 'COD',
+      shippingAddress,
+      paymentMethod: paymentMethod || 'COD',
       subtotal,
-      shipping_price: shippingPrice,
+      shippingPrice,
       discount: discount || 0,
-      tax_price: taxPrice,
-      total_price: totalPrice,
-      coupon_code: couponCode,
-      invoice_number: generateInvoiceNumber()
+      taxPrice,
+      totalPrice,
+      couponCode,
+      invoiceNumber: generateInvoiceNumber()
     };
 
     const order = await Order.create(orderData);
@@ -71,7 +71,7 @@ exports.createOrder = async (req, res) => {
     // Update product stock
     for (const item of items) {
       const product = await Product.findById(item.product);
-      await Product.updateById(item.product, { stock: product.stock - item.quantity });
+      await Product.findByIdAndUpdate(item.product, { stock: product.stock - item.quantity });
     }
 
     res.status(201).json({ success: true, order });
@@ -82,7 +82,7 @@ exports.createOrder = async (req, res) => {
 
 exports.getMyOrders = async (req, res) => {
   try {
-    const orders = await Order.findByUserId(req.user.id);
+    const orders = await Order.find({ user: req.user.id }).sort({ createdAt: -1 });
     res.status(200).json({ success: true, orders });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -96,7 +96,7 @@ exports.getOrder = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
     // Check if order belongs to user or user is admin
-    if (order.user_id !== req.user.id && req.user.role !== 'admin') {
+    if (order.user.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
     res.status(200).json({ success: true, order });
@@ -107,7 +107,7 @@ exports.getOrder = async (req, res) => {
 
 exports.getAllOrders = async (req, res) => {
   try {
-    const orders = await Order.findAll();
+    const orders = await Order.find().sort({ createdAt: -1 });
     res.status(200).json({ success: true, orders });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -123,10 +123,10 @@ exports.updateOrderStatus = async (req, res) => {
 
     const updateData = { status: req.body.status };
     if (req.body.status === 'Delivered') {
-      updateData.delivered_at = new Date().toISOString();
+      updateData.deliveredAt = new Date();
     }
 
-    const updatedOrder = await Order.updateById(req.params.id, updateData);
+    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, updateData, { new: true });
     res.status(200).json({ success: true, order: updatedOrder });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -148,11 +148,11 @@ exports.cancelOrder = async (req, res) => {
     for (const item of order.items) {
       const product = await Product.findById(item.product);
       if (product) {
-        await Product.updateById(item.product, { stock: product.stock + item.quantity });
+        await Product.findByIdAndUpdate(item.product, { stock: product.stock + item.quantity });
       }
     }
 
-    const updatedOrder = await Order.updateById(req.params.id, { status: 'Cancelled' });
+    const updatedOrder = await Order.findByIdAndUpdate(req.params.id, { status: 'Cancelled' }, { new: true });
     res.status(200).json({ success: true, order: updatedOrder });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

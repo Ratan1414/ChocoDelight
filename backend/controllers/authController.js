@@ -6,18 +6,18 @@ exports.register = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    const existingUser = await User.findByEmail(email);
+    const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ success: false, message: 'Email already registered' });
     }
 
     const user = await User.create({ name, email, password });
-    const token = User.generateToken(user.id);
+    const token = user.generateToken();
 
     res.status(201).json({
       success: true,
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+      user: { id: user._id, name: user.name, email: user.email, role: user.role }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -32,22 +32,22 @@ exports.login = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please enter email and password' });
     }
 
-    const user = await User.findByEmail(email);
+    const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    const isMatch = await User.comparePassword(password, user.password);
+    const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
-    const token = User.generateToken(user.id);
+    const token = user.generateToken();
 
     res.status(200).json({
       success: true,
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role }
+      user: { id: user._id, name: user.name, email: user.email, role: user.role }
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -66,7 +66,7 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const { name, email } = req.body;
-    const user = await User.updateById(req.user.id, { name, email });
+    const user = await User.findByIdAndUpdate(req.user.id, { name, email }, { new: true });
     res.status(200).json({ success: true, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -76,16 +76,17 @@ exports.updateProfile = async (req, res) => {
 exports.changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select('+password');
 
-    const isMatch = await User.comparePassword(currentPassword, user.password);
+    const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
       return res.status(400).json({ success: false, message: 'Current password is incorrect' });
     }
 
-    await User.updateById(req.user.id, { password: newPassword });
+    user.password = newPassword;
+    await user.save();
 
-    const token = User.generateToken(user.id);
+    const token = user.generateToken();
     res.status(200).json({ success: true, token, message: 'Password updated successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -150,7 +151,6 @@ exports.forgotPassword = async (req, res) => {
       resetUrl: resetUrl // Include in response for development
     });
   } catch (error) {
-    console.error('Forgot password error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -176,48 +176,6 @@ exports.resetPassword = async (req, res) => {
     const token = user.generateToken();
 
     res.status(200).json({ success: true, token, message: 'Password reset successful' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.googleAuth = async (req, res) => {
-  try {
-    const { googleId, email, name, avatar } = req.body;
-
-    let user = await User.findOne({ googleId });
-
-    if (user) {
-      const token = user.generateToken();
-      return res.status(200).json({
-        success: true,
-        token,
-        user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar }
-      });
-    }
-
-    // Check if user exists with same email
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already registered with different method' });
-    }
-
-    // Create new user
-    user = await User.create({
-      name,
-      email,
-      googleId,
-      avatar,
-      password: Math.random().toString(36) // Random password for Google users
-    });
-
-    const token = user.generateToken();
-
-    res.status(201).json({
-      success: true,
-      token,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role, avatar: user.avatar }
-    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
