@@ -2,19 +2,18 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
-const connectDB = require('./config/db');
+const supabase = require('./config/db');
 
 // Load env vars
 dotenv.config();
 
-// Connect to database
-connectDB();
+// No need to connect DB as Supabase is client-based
 
 const app = express();
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true
 }));
 app.use(express.json());
@@ -41,7 +40,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: 'Something went wrong!' });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`ChocoDelight API running on port ${PORT}`);
-});
+module.exports = app;

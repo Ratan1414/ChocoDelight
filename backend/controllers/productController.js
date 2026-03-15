@@ -4,38 +4,22 @@ exports.getAllProducts = async (req, res) => {
   try {
     const { search, category, minPrice, maxPrice, sort, rating, page = 1, limit = 12 } = req.query;
     
-    let query = {};
+    const filters = {
+      search,
+      category,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      rating: rating ? Number(rating) : undefined,
+      sort: sort === 'price_low' ? 'price:asc' : 
+            sort === 'price_high' ? 'price:desc' : 
+            sort === 'rating' ? 'rating:desc' : 
+            sort === 'popular' ? 'num_reviews:desc' : 
+            sort === 'newest' ? 'created_at:desc' : undefined,
+      limit: Number(limit),
+      offset: (Number(page) - 1) * Number(limit)
+    };
 
-    if (search) {
-      query.name = { $regex: search, $options: 'i' };
-    }
-
-    if (category) {
-      query.category = category;
-    }
-
-    if (minPrice || maxPrice) {
-      query.price = {};
-      if (minPrice) query.price.$gte = Number(minPrice);
-      if (maxPrice) query.price.$lte = Number(maxPrice);
-    }
-
-    if (rating) {
-      query.rating = { $gte: Number(rating) };
-    }
-
-    let sortOption = { createdAt: -1 };
-    if (sort === 'price_low') sortOption = { price: 1 };
-    else if (sort === 'price_high') sortOption = { price: -1 };
-    else if (sort === 'rating') sortOption = { rating: -1 };
-    else if (sort === 'popular') sortOption = { numReviews: -1 };
-    else if (sort === 'newest') sortOption = { createdAt: -1 };
-
-    const total = await Product.countDocuments(query);
-    const products = await Product.find(query)
-      .sort(sortOption)
-      .skip((Number(page) - 1) * Number(limit))
-      .limit(Number(limit));
+    const { products, total } = await Product.findAll(filters);
 
     res.status(200).json({
       success: true,
@@ -63,7 +47,7 @@ exports.getProduct = async (req, res) => {
 
 exports.getFeaturedProducts = async (req, res) => {
   try {
-    const products = await Product.find({ featured: true }).limit(8);
+    const { products } = await Product.findAll({ featured: true, limit: 8 });
     res.status(200).json({ success: true, products });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -72,7 +56,7 @@ exports.getFeaturedProducts = async (req, res) => {
 
 exports.getBestSellers = async (req, res) => {
   try {
-    const products = await Product.find({ bestSeller: true }).limit(8);
+    const { products } = await Product.findAll({ best_seller: true, limit: 8 });
     res.status(200).json({ success: true, products });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -81,7 +65,7 @@ exports.getBestSellers = async (req, res) => {
 
 exports.getCategories = async (req, res) => {
   try {
-    const categories = await Product.distinct('category');
+    const categories = await Product.getCategories();
     res.status(200).json({ success: true, categories });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -94,11 +78,12 @@ exports.getRelatedProducts = async (req, res) => {
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
-    const related = await Product.find({
-      category: product.category,
-      _id: { $ne: product._id }
-    }).limit(4);
-    res.status(200).json({ success: true, products: related });
+    const { products } = await Product.findAll({ 
+      category: product.category, 
+      limit: 4,
+      excludeId: req.params.id 
+    });
+    res.status(200).json({ success: true, products });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -115,10 +100,7 @@ exports.createProduct = async (req, res) => {
 
 exports.updateProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    });
+    const product = await Product.updateById(req.params.id, req.body);
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found' });
     }
@@ -130,10 +112,7 @@ exports.updateProduct = async (req, res) => {
 
 exports.deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
-    }
+    await Product.deleteById(req.params.id);
     res.status(200).json({ success: true, message: 'Product deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

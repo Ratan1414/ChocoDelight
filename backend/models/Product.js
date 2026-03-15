@@ -1,73 +1,111 @@
-const mongoose = require('mongoose');
+const supabase = require('../config/db');
 
-const productSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: [true, 'Please enter product name'],
-    trim: true,
-    maxLength: [200, 'Product name cannot exceed 200 characters']
-  },
-  description: {
-    type: String,
-    required: [true, 'Please enter product description']
-  },
-  price: {
-    type: Number,
-    required: [true, 'Please enter product price'],
-    maxLength: [8, 'Price cannot exceed 8 digits']
-  },
-  originalPrice: {
-    type: Number,
-    default: null
-  },
-  category: {
-    type: String,
-    required: [true, 'Please enter product category'],
-    enum: [
-      'Dark Chocolate',
-      'Milk Chocolate',
-      'Caramel Candy',
-      'Hazelnut Chocolate',
-      'Fruit Chocolate',
-      'Chocolate Bars',
-      'Chocolate Gift Boxes'
-    ]
-  },
-  image: {
-    type: String,
-    required: true
-  },
-  images: [{
-    type: String
-  }],
-  stock: {
-    type: Number,
-    required: [true, 'Please enter product stock'],
-    default: 1
-  },
-  rating: {
-    type: Number,
-    default: 0
-  },
-  numReviews: {
-    type: Number,
-    default: 0
-  },
-  featured: {
-    type: Boolean,
-    default: false
-  },
-  bestSeller: {
-    type: Boolean,
-    default: false
-  },
-  tags: [{
-    type: String
-  }],
-  createdAt: {
-    type: Date,
-    default: Date.now
+class Product {
+  static async create(productData) {
+    const { data, error } = await supabase
+      .from('products')
+      .insert([productData])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
   }
-});
 
-module.exports = mongoose.model('Product', productSchema);
+  static async findById(id) {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) return null;
+    return data;
+  }
+
+  static async findAll(filters = {}) {
+    let query = supabase.from('products').select('*', { count: 'exact' });
+
+    if (filters.category) {
+      query = query.eq('category', filters.category);
+    }
+
+    if (filters.search) {
+      query = query.ilike('name', `%${filters.search}%`);
+    }
+
+    if (filters.minPrice) {
+      query = query.gte('price', filters.minPrice);
+    }
+
+    if (filters.maxPrice) {
+      query = query.lte('price', filters.maxPrice);
+    }
+
+    if (filters.rating) {
+      query = query.gte('rating', filters.rating);
+    }
+
+    if (filters.featured !== undefined) {
+      query = query.eq('featured', filters.featured);
+    }
+
+    if (filters.excludeId) {
+      query = query.neq('id', filters.excludeId);
+    }
+
+    if (filters.sort) {
+      const [field, order] = filters.sort.split(':');
+      query = query.order(field, { ascending: order === 'asc' });
+    } else {
+      query = query.order('created_at', { ascending: false });
+    }
+
+    if (filters.limit) {
+      query = query.limit(filters.limit);
+    }
+
+    if (filters.offset) {
+      query = query.range(filters.offset, filters.offset + filters.limit - 1);
+    }
+
+    const { data, error, count } = await query;
+    if (error) throw error;
+    return { products: data, total: count };
+  }
+
+  static async updateById(id, updateData) {
+    const { data, error } = await supabase
+      .from('products')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  static async deleteById(id) {
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  }
+
+  static async getCategories() {
+    const { data, error } = await supabase
+      .from('products')
+      .select('category')
+      .order('category');
+
+    if (error) throw error;
+    const categories = [...new Set(data.map(item => item.category))];
+    return categories;
+  }
+}
+
+module.exports = Product;
