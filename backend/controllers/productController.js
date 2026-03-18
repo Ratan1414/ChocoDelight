@@ -105,6 +105,22 @@ exports.getCategories = async (req, res) => {
   }
 };
 
+exports.getRelatedProducts = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    const relatedProducts = await Product.find({
+      _id: { $ne: product._id },
+      category: product.category
+    }).limit(4);
+    res.status(200).json({ success: true, products: relatedProducts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.createProduct = async (req, res) => {
   try {
     const product = await Product.create(req.body);
